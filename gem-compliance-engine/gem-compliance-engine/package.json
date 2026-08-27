@@ -1,0 +1,11 @@
+{
+  "name": "gem-compliance-engine",
+  "version": "1.0.0",
+  "description": "Procurement officer dashboard component for GEM/tender bid compliance review.",
+  "main": "src/GemComplianceEngine.jsx",
+  "peerDependencies": {
+    "react": ">=17.0.0",
+    "lucide-react": ">=0.383.0"
+  },
+  "keywords": ["react", "component", "procurement", "compliance", "dashboard"]
+}
