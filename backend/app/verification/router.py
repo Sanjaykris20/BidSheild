@@ -235,3 +235,23 @@ async def cross_check_by_id(
     if not extracted_fields:
         raise HTTPException(status_code=400, detail="Document has no extracted fields to verify.")
     return await cross_check_document(extracted_fields, document_id, db)
+
+
+@router.get("/registry-db/{table_name}")
+async def get_registry_table(
+    table_name: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch all rows from the specified mock registry table."""
+    valid_tables = ["mock_epfo", "mock_pan", "mock_udyam", "mock_mii", "mock_gst", "mock_itr"]
+    if table_name not in valid_tables:
+        raise HTTPException(status_code=400, detail="Invalid table name")
+    
+    from sqlalchemy import text
+    try:
+        result = await db.execute(text(f"SELECT * FROM {table_name} LIMIT 100"))
+        keys = list(result.keys())
+        rows = [dict(zip(keys, row)) for row in result.fetchall()]
+        return {"table": table_name, "columns": keys, "rows": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

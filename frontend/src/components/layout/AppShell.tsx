@@ -73,6 +73,7 @@ export function AppShell({ children }: AppShellProps) {
       { path: '/admin/tenders', icon: 'folder_managed', label: 'Tender Oversight' },
       { path: '/admin/bids', icon: 'rule', label: 'Bid Governance' },
       { path: '/admin/connectors', icon: 'cable', label: 'Govt. Gateways (12)' },
+      { path: '/admin/database', icon: 'database', label: 'Registry Databases' },
       { path: '/admin/rules', icon: 'tune', label: 'Compliance Rules' },
       { path: '/admin/document-types', icon: 'article', label: 'Document Types' },
       { path: '/admin/ai', icon: 'neurology', label: 'AI Services Core' },
