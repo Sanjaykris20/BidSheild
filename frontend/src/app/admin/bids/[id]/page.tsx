@@ -74,7 +74,16 @@ export default function AdminBidDetailPage() {
               </span>
             </div>
             <h2 className="font-display font-black text-2xl text-primary">Bidder: {bid.bidderName || bid.bidderId}</h2>
-            <p className="text-xs text-neutral-muted mt-0.5">Submitted: {bid.submittedAt || 'N/A'} • Quoted: <strong>{bid.quotedAmount ? `₹${bid.quotedAmount.toLocaleString()}` : 'N/A'}</strong></p>
+            <p className="text-xs text-neutral-muted mt-0.5">
+              Submitted: {bid.submittedAt || 'N/A'} • 
+              Quoted Amount: <strong className="text-primary">{bid.quotedValueINR ? `₹${bid.quotedValueINR.toLocaleString()}` : bid.quotedAmount ? `₹${bid.quotedAmount.toLocaleString()}` : 'N/A'}</strong>
+              {bid.scstConcessionApplied && (
+                <span className="ml-2 px-2 py-0.5 bg-success/10 text-success text-[10px] rounded border border-success/20 font-bold inline-flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[12px]">diversity_1</span>
+                  Evaluation Price (15% SC/ST Concession): ₹{bid.evaluationValueINR?.toLocaleString()}
+                </span>
+              )}
+            </p>
           </div>
         </div>
 

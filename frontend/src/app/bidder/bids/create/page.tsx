@@ -325,6 +325,13 @@ export default function BidderCreateBidPage() {
   const gaps = (tenderRequirements?.length || 0) - fulfilledCount;
   const riskLevel = complianceScore >= 90 ? 'LOW' : complianceScore >= 70 ? 'MEDIUM' : 'CRITICAL';
 
+  const hasScstProof = attachedDocs.some(d =>
+    d.category.includes('Social') ||
+    d.name.toLowerCase().includes('sc/st') ||
+    d.name.toLowerCase().includes('caste') ||
+    d.name.toLowerCase().includes('community')
+  );
+
   const handleRunPreCheck = () => {
     setIsPreChecking(true);
     showToast('Running AI Pre-Submission Compliance Check...', 'info');
@@ -358,8 +365,12 @@ export default function BidderCreateBidPage() {
           gstin: '27ABCDE1234F1Z5',
           pan: 'ABCDE1234F',
           udyam: 'UDYAM-MH-18-00123',
-          financialBid: `₹${(totalQuoted / 10000000).toFixed(2)} Cr`,
+          financialBid: hasScstProof 
+            ? `₹${((totalQuoted * 0.85) / 10000000).toFixed(2)} Cr (15% SC/ST Concession Applied)`
+            : `₹${(totalQuoted / 10000000).toFixed(2)} Cr`,
           quotedValueINR: totalQuoted,
+          evaluationValueINR: hasScstProof ? Math.round(totalQuoted * 0.85) : totalQuoted,
+          scstConcessionApplied: hasScstProof,
           priceBreakdown: {
             basicRateINR: quotedBasic,
             gstPercentage: 18,
@@ -801,6 +812,15 @@ export default function BidderCreateBidPage() {
                       Anti-Monopoly Cap Exceeded: You already have {existingBidsCount} active bid(s) (Cap: {maxBidsPerBidder}).
                     </span>
                     <span className="font-bold text-danger">-15 pts</span>
+                  </div>
+                )}
+                {hasScstProof && (
+                  <div className="flex items-center justify-between border-t border-outline-variant/50 pt-2 mt-2">
+                    <span className="flex items-center gap-1.5 text-success font-semibold">
+                      <span className="material-symbols-outlined text-[14px]">diversity_1</span>
+                      SC/ST 15% Price Concession Applied: Evaluation price reduced from ₹{(totalQuoted / 10000000).toFixed(2)} Cr to ₹{((totalQuoted * 0.85) / 10000000).toFixed(2)} Cr.
+                    </span>
+                    <span className="font-bold text-success">Benefit Applied</span>
                   </div>
                 )}
               </div>

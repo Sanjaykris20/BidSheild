@@ -333,6 +333,8 @@ export interface Bid {
   status: BidStatus;
   financialBid: string;
   quotedValueINR: number;
+  evaluationValueINR?: number;
+  scstConcessionApplied?: boolean;
   priceBreakdown: CommercialPriceBreakdown;
   complianceScore: number;
   riskLevel: RiskLevel;
