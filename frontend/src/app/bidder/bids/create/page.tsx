@@ -32,7 +32,7 @@ export default function BidderCreateBidPage() {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState<number>(1);
   const [selectedTenderId, setSelectedTenderId] = useState('TND-1024');
   const [localContent, setLocalContent] = useState(42);
   const [quotedBasic, setQuotedBasic] = useState(289830508);
@@ -477,6 +477,7 @@ export default function BidderCreateBidPage() {
                 <p className="text-xs text-neutral-muted mt-1">Chennai Petroleum Corporation Ltd (CPCL) • CPPP Public Registry</p>
               </div>
             </label>
+          </div>
           {/* Diversity / Reservation Query */}
           <div className="p-4 bg-surface rounded-xl border border-outline-variant/80 space-y-3">
             <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
