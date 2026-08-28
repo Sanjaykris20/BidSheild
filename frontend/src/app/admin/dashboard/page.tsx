@@ -104,6 +104,25 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
+        {/* AI Throughput */}
+        <div
+          onClick={() => router.push('/admin/ai')}
+          className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-5 shadow-sm flex flex-col justify-between hover:border-info transition-all cursor-pointer"
+        >
+          <div className="flex justify-between items-start mb-4">
+            <span className="font-semibold text-neutral-muted uppercase text-xs tracking-wider">
+              AI Microservices
+            </span>
+            <span className="material-symbols-outlined text-info icon-fill">neurology</span>
+          </div>
+          <div>
+            <span className="text-4xl font-display font-black text-primary">8/8</span>
+            <p className="text-xs text-on-surface-variant mt-2 font-medium">
+              OCR, Parser, Classifier, Copilot active
+            </p>
+          </div>
+        </div>
+
         {/* Active Rules */}
         <div
           onClick={() => router.push('/admin/rules')}

@@ -37,7 +37,7 @@ export default function BidderMarketplacePage() {
     }, 2000);
   };
 
-  const INITIAL_TENDERS = [
+  const tenders = [
     {
       id: 'TND-1024',
       number: 'GEM/2026/B/1024',
@@ -76,7 +76,7 @@ export default function BidderMarketplacePage() {
     },
   ];
 
-  const [tendersList, setTendersList] = useState(INITIAL_TENDERS);
+  const [tendersList, setTendersList] = useState(tenders);
 
   const handleSyncLiveTenders = async () => {
     setIsSyncing(true);
@@ -85,7 +85,7 @@ export default function BidderMarketplacePage() {
       const res = await fetch('/api/tenders/live');
       const data = await res.json();
       if (data.success && data.tenders.length > 0) {
-        setTendersList([...data.tenders, ...INITIAL_TENDERS]);
+        setTendersList([...data.tenders, ...tenders]);
         showToast(`Successfully extracted ${data.tenders.length} live tenders from CPP Portal!`, 'success');
       } else {
         showToast('Failed to parse active tenders. Using fallback.', 'warning');

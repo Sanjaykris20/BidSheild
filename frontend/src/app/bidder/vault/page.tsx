@@ -167,7 +167,7 @@ export default function BidderVaultPage() {
     setIsUploading(true);
     setUploadProgress(15);
     setUploadStatusMsg(`Encrypting and uploading ${file.name}...`);
-    setUploadLogMsg(`[SYS] Initializing secure connection to AI Verification Pipeline...`);
+    setUploadLogMsg(`[SYS] Calculating SHA-256 cryptographic fingerprint for ${file.name}...`);
 
     try {
       const formData = new FormData();
@@ -175,58 +175,52 @@ export default function BidderVaultPage() {
       formData.append('bidderId', 'VEN-TECHCORP-01');
 
       setUploadProgress(40);
-      setUploadStatusMsg('Running Llama 3.1 OCR & Spatial Parsing Engine...');
-      setUploadLogMsg('[SYS] File streamed to Python FastAPI Backend. Awaiting LLM extraction.');
+      setUploadStatusMsg('Running OCR & Spatial Parsing Engine...');
+      setUploadLogMsg('[SYS] File buffer streamed into safe storage and validated against schema.');
 
-      // Hit the real live AI backend instead of the mock API
-      const res = await fetch('/api/verification/run', {
+      const res = await fetch('/api/documents/upload', {
         method: 'POST',
         body: formData,
       });
 
       setUploadProgress(80);
       setUploadStatusMsg('AI Document Classification & Government Dataset Cross-Check...');
-      setUploadLogMsg('[SYS] Extracted statutory fields and verified against compliance rules.');
+      setUploadLogMsg('[SYS] Extracted statutory fields and verified digital signatures.');
 
       const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || 'AI Pipeline Upload failed');
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Upload failed');
       }
 
       setUploadProgress(100);
       setUploadStatusMsg('Verification Complete.');
-      setUploadLogMsg(`[SYS] Document verified. Dynamic Score: ${data.score}/100. Risk: ${data.risk_level}`);
+      setUploadLogMsg(`[SYS] Document sealed with SHA-256: ${data.document.hashSha256.slice(0, 16)}...`);
 
-      const docType = data.ai_extraction?.document_type || 'General';
-      const extractedFieldsObj = data.ai_extraction?.extracted_fields || {};
-      const mappedExtractedFields = Object.keys(extractedFieldsObj).map(key => ({
-        label: key.toUpperCase(),
-        value: String(extractedFieldsObj[key]),
-        confidence: 0.99
-      }));
-      
-      const newFileName = `${docType}_Verified_${Date.now().toString().slice(-4)}.pdf`;
-
+      const uploadedDoc = data.document;
       const newVaultDoc: VaultDoc = {
-        id: `DOC-LIVE-${Date.now()}`,
-        name: newFileName,
-        category: docType,
-        extractedId: (Object.values(extractedFieldsObj)[0] as string) || 'VERIFIED-DOC',
-        statusText: `AI Score: ${data.score}/100 | Risk: ${data.risk_level}`,
-        statusType: data.risk_level === 'CRITICAL' ? 'warning' : 'verified',
-        fileSize: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+        id: uploadedDoc.id,
+        name: uploadedDoc.originalFilename,
+        category: uploadedDoc.documentType,
+        extractedId:
+          uploadedDoc.extractedData?.gstin ||
+          uploadedDoc.extractedData?.udyamNumber ||
+          uploadedDoc.extractedData?.pan ||
+          uploadedDoc.id,
+        statusText: `Verified (SHA-256: ${uploadedDoc.hashSha256.slice(0, 10)}...)`,
+        statusType: 'verified',
+        fileSize: uploadedDoc.fileSizeFormatted,
         uploadDate: 'Just Uploaded',
         isRealUpload: true,
-        pdfUrl: URL.createObjectURL(file),
-        extractedFields: mappedExtractedFields,
-        hashSha256: `live-ai-hash-sha256-${Date.now()}`,
+        pdfUrl: `/api/documents/${uploadedDoc.id}/view`,
+        extractedFields: uploadedDoc.extractedFields,
+        hashSha256: uploadedDoc.hashSha256,
       };
 
       setTimeout(() => {
         setIsUploading(false);
         setDocs(prev => [newVaultDoc, ...prev]);
-        showToast(`Document "${newFileName}" verified by AI and saved to vault.`, 'success');
+        showToast(`Document "${file.name}" uploaded and verified in vault.`, 'success');
       }, 500);
     } catch (err: any) {
       setIsUploading(false);

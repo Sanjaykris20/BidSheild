@@ -24,15 +24,32 @@ export default function ClientCreateTenderPage() {
     emdAmount: '₹36,40,000 (Exempt for MSME)',
     closingDate: '2026-09-20 18:00 IST',
     localContentRequired: 50,
+    maxBidsPerBidder: 1,
+    womenReservationPercent: 3,
     scopeOfWork: 'Turnkey procurement of cryogenic high-pressure ball and check valves for CPCL Manali Refinery expansion project with ASME and API 6D specifications.',
-    rules: [
-      { code: 'REQ-GST-01', title: 'Active GSTIN Verification', required: true },
-      { code: 'REQ-PAN-01', title: 'Valid PAN with NSDL Match', required: true },
-      { code: 'REQ-LC-01', title: 'Make in India Local Content (≥ 50%)', required: true },
-      { code: 'REQ-DEBAR-01', title: 'CVC Non-Debarment Screening', required: true },
-      { code: 'REQ-OEM-01', title: 'OEM Authorization Form (MAF)', required: true },
-    ],
   });
+
+  const [requiredDocs, setRequiredDocs] = useState([
+    { id: 'req_gst', name: 'GST Certificate', category: 'Statutory / Tax', weight: 10, checked: true },
+    { id: 'req_pan', name: 'PAN Card', category: 'Statutory / Tax', weight: 10, checked: true },
+    { id: 'req_msme', name: 'MSME / Udyam Registration', category: 'Statutory / MSME', weight: 10, checked: true },
+    { id: 'req_mse', name: 'MSE (Micro & Small Enterprise) Certificate', category: 'Statutory / MSME', weight: 10, checked: false },
+    { id: 'req_mii', name: 'Local Content Declaration', category: 'Compliance / MII', weight: 15, checked: true },
+    { id: 'req_oem', name: 'OEM Authorization Form (MAF)', category: 'Technical / OEM', weight: 15, checked: true },
+    { id: 'req_epfo', name: 'EPFO Compliance Certificate', category: 'Statutory / Labour', weight: 10, checked: true },
+    { id: 'req_esic', name: 'ESIC Compliance Certificate', category: 'Statutory / Labour', weight: 10, checked: false },
+    { id: 'req_itr', name: 'Income Tax Returns (3 Years)', category: 'Statutory / Tax', weight: 15, checked: false },
+    { id: 'req_turnover', name: 'Turnover Certificate', category: 'Financial / Audit', weight: 10, checked: false },
+    { id: 'req_exp', name: 'Prior Supply Experience Certificate', category: 'Technical / Experience', weight: 15, checked: false },
+    { id: 'req_iso', name: 'ISO 9001 Quality Certificate', category: 'Technical / Quality', weight: 15, checked: true },
+    { id: 'req_debarment', name: 'Non-Debarment Declaration', category: 'Compliance / CVC', weight: 15, checked: true },
+    { id: 'req_scst', name: 'SC/ST Caste Certificate', category: 'Statutory / Social', weight: 10, checked: false },
+    { id: 'req_community', name: 'Community Certificate', category: 'Statutory / Social', weight: 10, checked: false },
+    { id: 'req_nativity', name: 'Nativity Certificate', category: 'Statutory / Local', weight: 10, checked: false },
+    { id: 'req_citizen', name: 'Citizen Membership Card', category: 'Statutory / Local', weight: 10, checked: false },
+  ]);
+
+  const totalWeight = requiredDocs.reduce((sum, d) => sum + (d.checked ? d.weight : 0), 0);
 
   const handleSimulateAIParser = async () => {
     setIsAIAnalyzing(true);
@@ -63,7 +80,21 @@ export default function ClientCreateTenderPage() {
   };
 
   const handlePublishTender = async () => {
+    if (totalWeight !== 100) {
+      showToast('Total weight of selected criteria must equal exactly 100%.', 'error');
+      return;
+    }
+
     setIsPublishing(true);
+    const selectedDocs = requiredDocs
+      .filter(d => d.checked)
+      .map(d => ({
+        id: d.id,
+        name: d.name,
+        category: d.category,
+        weight: d.weight
+      }));
+
     try {
       const res = await fetch('/api/tenders', {
         method: 'POST',
@@ -78,8 +109,11 @@ export default function ClientCreateTenderPage() {
           emdAmountFormatted: formData.emdAmount,
           submissionDeadline: formData.closingDate,
           localContentRequired: formData.localContentRequired,
+          maxBidsPerBidder: formData.maxBidsPerBidder,
+          womenReservationPercent: formData.womenReservationPercent,
           scopeOfWork: [formData.scopeOfWork],
-          eligibilityCriteria: ['Valid GSTIN', 'Make-in-India ≥ 50%', 'OEM MAF'],
+          eligibilityCriteria: selectedDocs.map(d => `${d.name} (${d.weight}% weight)`),
+          requiredDocuments: selectedDocs,
           status: 'ACTIVE',
         }),
       });
@@ -256,44 +290,130 @@ export default function ClientCreateTenderPage() {
       {/* STEP 4: Statutory Eligibility */}
       {step === 4 && (
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-6 space-y-4">
-          <h3 className="font-bold text-base text-primary">Statutory & Technical Compliance Matrix</h3>
-          <div className="space-y-2">
-            {formData.rules.map(r => (
-              <div key={r.code} className="p-3 bg-surface rounded-xl border border-outline-variant flex items-center justify-between text-xs">
-                <div>
-                  <span className="font-bold text-primary">{r.title}</span>
-                  <span className="font-mono text-[10px] text-neutral-muted block">ID: {r.code}</span>
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="font-bold text-base text-primary">Statutory & Technical Compliance Matrix</h3>
+              <p className="text-xs text-neutral-muted mt-0.5">Select the mandatory documents bidders must upload and allocate evaluation weights.</p>
+            </div>
+            <div className={`px-3 py-1.5 rounded-xl border text-xs font-mono font-bold ${totalWeight === 100 ? 'bg-success/10 border-success/30 text-success' : 'bg-warning/10 border-warning/30 text-warning animate-pulse'}`}>
+              Total Weight: {totalWeight}% {totalWeight === 100 ? '• Valid' : '• Must equal 100%'}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-1">
+            {requiredDocs.map((doc, idx) => (
+              <div 
+                key={doc.id} 
+                className={`p-3 rounded-xl border flex items-center justify-between text-xs transition-colors ${
+                  doc.checked ? 'bg-primary/5 border-primary/30' : 'bg-surface border-outline-variant/60'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    checked={doc.checked} 
+                    onChange={() => {
+                      const updated = [...requiredDocs];
+                      updated[idx].checked = !updated[idx].checked;
+                      setRequiredDocs(updated);
+                    }}
+                    className="accent-primary w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="font-bold text-primary block">{doc.name}</span>
+                    <span className="text-[10px] text-neutral-muted">{doc.category}</span>
+                  </div>
                 </div>
-                <span className="px-2 py-0.5 rounded bg-success/10 text-success text-[10px] font-bold uppercase border border-success/20">
-                  Mandatory Hard Gating
-                </span>
+                {doc.checked && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="100" 
+                      value={doc.weight}
+                      onChange={(e) => {
+                        const updated = [...requiredDocs];
+                        updated[idx].weight = Number(e.target.value);
+                        setRequiredDocs(updated);
+                      }}
+                      className="w-12 px-1.5 py-1 border border-outline-variant rounded bg-white text-center font-mono font-bold text-primary"
+                    />
+                    <span className="font-semibold text-neutral-muted">%</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          <div className="flex justify-between pt-4">
-            <button onClick={() => setStep(3)} className="border border-outline-variant px-4 py-2 rounded-xl text-sm font-semibold">← Back</button>
-            <button onClick={() => setStep(5)} className="bg-primary text-white px-5 py-2 rounded-xl text-sm font-semibold">Next: MII Rules →</button>
+          <div className="flex justify-between pt-4 border-t border-outline-variant/60">
+            <button onClick={() => setStep(3)} className="border border-outline-variant px-4 py-2 rounded-xl text-sm font-semibold hover:bg-surface-alt transition-colors">← Back</button>
+            <button 
+              onClick={() => {
+                if (totalWeight !== 100) {
+                  showToast('Total weight of selected criteria must equal exactly 100%.', 'warning');
+                  return;
+                }
+                setStep(5);
+              }} 
+              className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                totalWeight === 100 
+                  ? 'bg-primary text-white hover:bg-primary-container shadow-sm' 
+                  : 'bg-surface-variant text-neutral-muted cursor-not-allowed border border-outline-variant/60'
+              }`}
+            >
+              Next: MII Rules →
+            </button>
           </div>
         </div>
       )}
 
-      {/* STEP 5: Make in India (MII) Rules */}
+      {/* STEP 5: Make in India (MII) & Anti-Monopoly Rules */}
       {step === 5 && (
         <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant p-6 space-y-4">
-          <h3 className="font-bold text-base text-primary">Make in India (MII) Order Parameters</h3>
-          <div>
-            <label className="block text-xs font-semibold text-primary mb-1">Class-I Minimum Local Content Threshold (%)</label>
-            <input
-              type="number"
-              value={formData.localContentRequired}
-              onChange={e => setFormData({ ...formData, localContentRequired: Number(e.target.value) })}
-              className="w-full px-3 py-2 border border-outline-variant rounded-xl text-sm font-mono font-bold"
-            />
-            <p className="text-[11px] text-neutral-muted mt-1">Default statutory threshold: 50% for Class-I Local Suppliers.</p>
+          <h3 className="font-bold text-base text-primary">Compliance & Anti-Monopoly Rules</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-primary mb-1">Class-I Minimum Local Content Threshold (%)</label>
+              <input
+                type="number"
+                value={formData.localContentRequired}
+                onChange={e => setFormData({ ...formData, localContentRequired: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-outline-variant rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-primary outline-none"
+              />
+              <p className="text-[10px] text-neutral-muted mt-1">Default statutory threshold: 50% for Class-I Local Suppliers.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-primary mb-1">Max Active Bids per Vendor (Anti-Monopoly Cap)</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={formData.maxBidsPerBidder}
+                onChange={e => setFormData({ ...formData, maxBidsPerBidder: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-outline-variant rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-primary outline-none"
+              />
+              <p className="text-[10px] text-neutral-muted mt-1">Cap active submissions under evaluation to prevent monopolization.</p>
+            </div>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-outline-variant/60 pt-4">
+            <div>
+              <label className="block text-xs font-semibold text-primary mb-1">Women Nodal Reservation / Purchase Preference (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={formData.womenReservationPercent}
+                onChange={e => setFormData({ ...formData, womenReservationPercent: Number(e.target.value) })}
+                className="w-full px-3 py-2 border border-outline-variant rounded-xl text-sm font-mono font-bold focus:ring-2 focus:ring-primary outline-none"
+              />
+              <p className="text-[10px] text-neutral-muted mt-1">Allocation quota reserved specifically for women-led micro & small enterprises.</p>
+            </div>
+          </div>
+
           <div className="flex justify-between pt-4">
-            <button onClick={() => setStep(4)} className="border border-outline-variant px-4 py-2 rounded-xl text-sm font-semibold">← Back</button>
-            <button onClick={() => setStep(6)} className="bg-primary text-white px-5 py-2 rounded-xl text-sm font-semibold">Next: AI RFP Parser →</button>
+            <button onClick={() => setStep(4)} className="border border-outline-variant px-4 py-2 rounded-xl text-sm font-semibold hover:bg-surface-alt transition-colors">← Back</button>
+            <button onClick={() => setStep(6)} className="bg-primary text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-primary-container transition-colors">Next: AI RFP Parser →</button>
           </div>
         </div>
       )}
@@ -344,7 +464,7 @@ export default function ClientCreateTenderPage() {
             <p>• Tender Number: <strong className="font-mono text-primary">{formData.tenderNumber}</strong></p>
             <p>• Organization: <strong>{formData.org}</strong></p>
             <p>• Mandatory Local Content: <strong>{formData.localContentRequired}% (Class-I)</strong></p>
-            <p>• 5 Statutory compliance rules configured for automated gateway verification.</p>
+            <p>• {requiredDocs.filter(d => d.checked).length} Statutory & Technical compliance rules configured for automated gateway verification.</p>
           </div>
 
           <div className="flex justify-between pt-4">

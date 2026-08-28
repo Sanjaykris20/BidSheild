@@ -74,7 +74,10 @@ export function AppShell({ children }: AppShellProps) {
       { path: '/admin/bids', icon: 'rule', label: 'Bid Governance' },
       { path: '/admin/connectors', icon: 'cable', label: 'Govt. Gateways (12)' },
       { path: '/admin/rules', icon: 'tune', label: 'Compliance Rules' },
+      { path: '/admin/document-types', icon: 'article', label: 'Document Types' },
+      { path: '/admin/ai', icon: 'neurology', label: 'AI Services Core' },
       { path: '/admin/risk', icon: 'speed', label: 'Risk Configuration' },
+      { path: '/admin/security', icon: 'shield', label: 'Security Command' },
       { path: '/admin/audit', icon: 'history', label: 'Master Audit Trail' },
       { path: '/admin/reports', icon: 'analytics', label: 'Platform Reports' },
       { path: '/admin/settings', icon: 'settings', label: 'System Settings' },
@@ -252,10 +255,10 @@ export function AppShell({ children }: AppShellProps) {
                 </div>
                 <div className="hidden md:flex flex-col text-left">
                   <span className="text-xs font-bold text-primary leading-none">
-                    {activePersona === 'ADMIN' ? 'System Administrator' : activePersona === 'CLIENT' ? 'Procurement Officer' : 'Bidder'}
+                    {currentProfile.name}
                   </span>
                   <span className="text-[10px] text-neutral-muted font-medium mt-0.5">
-                    {activePersona === 'BIDDER' ? currentProfile.organization : currentProfile.name}
+                    {currentProfile.badge}
                   </span>
                 </div>
                 <span className="material-symbols-outlined text-outline text-[18px]">

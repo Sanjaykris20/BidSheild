@@ -89,6 +89,7 @@ export interface FileUploadInput {
   bidderId?: string;
   documentType?: string;
   isMandatory?: boolean;
+  rawBlob?: Blob;
 }
 
 export interface ValidationResult {
@@ -344,11 +345,13 @@ export class DocumentStorageService {
     // Classify document type if not specified
     const inferredType: SupportedDocumentType = (input.documentType as SupportedDocumentType) || this.inferDocumentType(input.fileName);
 
-    // Extract fields & OCR simulation
-    const { extractedData, extractedFields, ocrText, confidence } = this.extractFieldsFromBuffer(
+    // Ensure AI gets a chance to extract data and we have text before sealing
+    const { extractedData, extractedFields, ocrText, confidence, dbVerified } = await this.extractFieldsFromBuffer(
       input.fileName,
       inferredType,
-      input.buffer
+      input.buffer,
+      input.rawBlob,
+      diskPath
     );
 
     const fileSizeFormatted = input.buffer.length > 1024 * 1024
@@ -367,7 +370,7 @@ export class DocumentStorageService {
       fileSize: input.buffer.length,
       fileSizeFormatted,
       uploadedAt: new Date().toISOString().replace('T', ' ').slice(0, 16) + ' IST',
-      status: 'VERIFIED',
+      status: dbVerified ? 'VERIFIED' : 'FAILED',
       storageReference: `local://.uploads/${safeDiskFileName}`,
       hashSha256,
       localPath: diskPath,
@@ -556,61 +559,112 @@ export class DocumentStorageService {
     return 'Other Supporting Documents';
   }
 
-  private extractFieldsFromBuffer(
+  private async extractFieldsFromBuffer(
     fileName: string,
     docType: SupportedDocumentType,
-    buffer: Buffer
-  ): {
+    buffer: Buffer,
+    rawBlob?: Blob,
+    diskPath?: string
+  ): Promise<{
     extractedData: Record<string, any>;
     extractedFields: ExtractedField[];
     ocrText: string;
     confidence: number;
-  } {
-    // Try to extract raw ASCII / UTF-8 strings from binary buffer
-    const rawContent = buffer.toString('utf8', 0, Math.min(buffer.length, 65536));
-    const extractedData: Record<string, any> = {};
+    dbVerified: boolean;
+  }> {
+    const extractedData: Record<string, string | number> = {};
     const extractedFields: ExtractedField[] = [];
-    let confidence = 0.98;
+    let ocrText = '';
+    let confidence = 0.85;
+    let dbVerified = true;
 
-    // Check for explicit local content % in file content or filename
-    const lcMatch = rawContent.match(/(\d{1,3})\s*%/i) || fileName.match(/(\d{1,3})pct/i) || fileName.match(/(\d{1,3})%/i);
-    if (lcMatch && (docType === 'Make in India Declaration' || docType === 'Local Content Declaration')) {
-      const val = parseInt(lcMatch[1], 10);
-      if (!isNaN(val) && val >= 0 && val <= 100) {
-        extractedData.localContentPercent = val;
-        extractedFields.push({ label: 'Local Content %', value: `${val}%`, confidence: 0.98, pageNumber: 1 });
+    try {
+      const formData = new FormData();
+      const mimeType = fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png';
+      
+      if (diskPath) {
+        formData.append('file_path', diskPath);
+        formData.append('original_filename', fileName);
+      } else if (rawBlob) {
+        formData.append('file', rawBlob, fileName);
+      } else {
+        const fileObj = new File([new Uint8Array(buffer)], fileName, { type: mimeType });
+        formData.append('file', fileObj);
       }
-    } else if (docType === 'Make in India Declaration') {
-      extractedData.localContentPercent = 42;
-      extractedFields.push({ label: 'Local Content %', value: '42%', confidence: 0.984, pageNumber: 1 });
+      
+      formData.append('document_type', docType);
+
+      // Use 127.0.0.1 to avoid Node.js IPv6 localhost resolution issues
+      const aiUrl = process.env.AI_ENGINE_URL || 'http://127.0.0.1:8001';
+      const targetEndpoint = diskPath ? '/api/ai/document-extract-path' : '/api/ai/document-extract';
+      const aiResponse = await fetch(`${aiUrl}${targetEndpoint}`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (aiResponse.ok) {
+        const aiData = await aiResponse.json();
+        ocrText = aiData.extracted_text || '';
+        confidence = aiData.confidence || 0.98;
+        if (aiData.db_verified !== undefined) {
+          dbVerified = aiData.db_verified;
+        }
+
+        if (aiData.extracted_fields && typeof aiData.extracted_fields === 'object') {
+          for (const [key, value] of Object.entries(aiData.extracted_fields)) {
+            extractedData[key] = value as string | number;
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            extractedFields.push({ label, value: String(value), confidence: confidence, pageNumber: 1 });
+          }
+        }
+      } else {
+        const errText = await aiResponse.text();
+        ocrText = `AI FETCH FAILED: ${aiResponse.status} ${errText}\n`;
+      }
+    } catch (e: any) {
+      console.error('AI Engine error:', e);
+      ocrText = `AI FETCH ERROR: ${e.message || String(e)}\n`;
     }
 
-    // Check for GSTIN
-    const gstMatch = rawContent.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}/);
-    if (gstMatch) {
-      extractedData.gstin = gstMatch[0];
-      extractedFields.push({ label: 'GSTIN', value: gstMatch[0], confidence: 1.0, pageNumber: 1 });
-    }
+    if (extractedFields.length === 0) {
+      // Try to extract raw ASCII / UTF-8 strings from binary buffer
+      const rawContent = buffer.toString('utf8', 0, Math.min(buffer.length, 65536));
+      ocrText = (ocrText || '') + '\n' + rawContent.slice(0, 1000);
+      
+      const lcMatch = rawContent.match(/(\d{1,3})\s*%/i) || fileName.match(/(\d{1,3})pct/i) || fileName.match(/(\d{1,3})%/i);
+      if (lcMatch && (docType === 'Make in India Declaration' || docType === 'Local Content Declaration')) {
+        const val = parseInt(lcMatch[1], 10);
+        if (!isNaN(val) && val >= 0 && val <= 100) {
+          extractedData.localContentPercent = val;
+          extractedFields.push({ label: 'Local Content %', value: `${val}%`, confidence: 0.98, pageNumber: 1 });
+        }
+      }
 
-    // Check for PAN
-    const panMatch = rawContent.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
-    if (panMatch) {
-      extractedData.pan = panMatch[0];
-      extractedFields.push({ label: 'PAN', value: panMatch[0], confidence: 1.0, pageNumber: 1 });
-    }
+      const gstMatch = rawContent.match(/[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}/);
+      if (gstMatch) {
+        extractedData.gstin = gstMatch[0];
+        extractedFields.push({ label: 'GSTIN', value: gstMatch[0], confidence: 1.0, pageNumber: 1 });
+      }
 
-    // Check for Udyam number
-    const udyamMatch = rawContent.match(/UDYAM-[A-Z]{2}-[0-9]{2}-[0-9]{5,7}/i);
-    if (udyamMatch) {
-      extractedData.udyamNumber = udyamMatch[0].toUpperCase();
-      extractedFields.push({ label: 'Udyam Registration', value: udyamMatch[0].toUpperCase(), confidence: 1.0, pageNumber: 1 });
+      const panMatch = rawContent.match(/[A-Z]{5}[0-9]{4}[A-Z]{1}/);
+      if (panMatch) {
+        extractedData.pan = panMatch[0];
+        extractedFields.push({ label: 'PAN', value: panMatch[0], confidence: 1.0, pageNumber: 1 });
+      }
+
+      const udyamMatch = rawContent.match(/UDYAM-[A-Z]{2}-[0-9]{2}-[0-9]{5,7}/i);
+      if (udyamMatch) {
+        extractedData.udyamNumber = udyamMatch[0].toUpperCase();
+        extractedFields.push({ label: 'Udyam Registration', value: udyamMatch[0].toUpperCase(), confidence: 1.0, pageNumber: 1 });
+      }
     }
 
     return {
       extractedData,
       extractedFields,
-      ocrText: rawContent.slice(0, 1000),
+      ocrText,
       confidence,
+      dbVerified,
     };
   }
 

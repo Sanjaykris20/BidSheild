@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
 import { MockBadge } from '@/components/shared/MockBadge';
@@ -20,6 +20,13 @@ interface AttachedDoc {
   isMandatory?: boolean;
 }
 
+interface TenderRequirement {
+  id: string;
+  name: string;
+  category: string;
+  weight: number;
+}
+
 export default function BidderCreateBidPage() {
   const router = useRouter();
   const { showToast } = useToast();
@@ -34,6 +41,62 @@ export default function BidderCreateBidPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingRealFile, setIsUploadingRealFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
+  const [vaultDocs, setVaultDocs] = useState<any[]>([]);
+  const [isLoadingVault, setIsLoadingVault] = useState(false);
+
+  // Dynamic tender requirements fetched from the backend (set by tender creators)
+  const [tenderRequirements, setTenderRequirements] = useState<TenderRequirement[]>([]);
+  const [maxBidsPerBidder, setMaxBidsPerBidder] = useState<number>(1);
+  const [existingBidsCount, setExistingBidsCount] = useState<number>(0);
+  const [womenReservationPercent, setWomenReservationPercent] = useState<number>(3);
+  const [isWomenLed, setIsWomenLed] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchTenderDetails = async () => {
+      try {
+        const res = await fetch('/api/tenders');
+        const data = await res.json();
+        const tender = data.tenders?.find((t: any) => t.id === selectedTenderId);
+        if (tender) {
+          if (tender.requiredDocuments) setTenderRequirements(tender.requiredDocuments);
+          if (tender.maxBidsPerBidder !== undefined) setMaxBidsPerBidder(tender.maxBidsPerBidder);
+          if (tender.womenReservationPercent !== undefined) setWomenReservationPercent(tender.womenReservationPercent);
+        }
+      } catch (err) {
+        console.error('Failed to fetch tender details', err);
+      }
+    };
+
+    const fetchExistingBids = async () => {
+      try {
+        const res = await fetch('/api/bids?bidder_id=VEN-TECHCORP-01');
+        const data = await res.json();
+        if (data.bids) {
+          setExistingBidsCount(data.bids.length);
+        }
+      } catch (err) {
+        console.error('Failed to fetch existing bids', err);
+      }
+    };
+
+    fetchTenderDetails();
+    fetchExistingBids();
+  }, [selectedTenderId]);
+
+  // Dynamically add/remove women leadership proof requirement
+  useEffect(() => {
+    setTenderRequirements(prev => {
+      const hasWomenProof = prev.some(r => r.id === 'req_women_proof');
+      if (isWomenLed && !hasWomenProof) {
+        return [...prev, { id: 'req_women_proof', name: 'Valid Proof of Women Leadership', category: 'Statutory / Diversity', weight: 10 }];
+      } else if (!isWomenLed && hasWomenProof) {
+        return prev.filter(r => r.id !== 'req_women_proof');
+      }
+      return prev;
+    });
+  }, [isWomenLed]);
 
   const [attachedDocs, setAttachedDocs] = useState<AttachedDoc[]>([
     {
@@ -132,8 +195,14 @@ export default function BidderCreateBidPage() {
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
       const docCategory = uploadedDoc.documentType.includes('GST')
         ? 'Statutory / Tax'
-        : uploadedDoc.documentType.includes('Udyam') || uploadedDoc.documentType.includes('MSME')
+        : uploadedDoc.documentType.includes('Udyam') || uploadedDoc.documentType.includes('MSME') || uploadedDoc.documentType.includes('MSE')
         ? 'Statutory / MSME'
+        : uploadedDoc.documentType.includes('SC/ST') || uploadedDoc.documentType.includes('Caste') || uploadedDoc.documentType.includes('Community') || uploadedDoc.documentType.includes('Social')
+        ? 'Statutory / Social'
+        : uploadedDoc.documentType.includes('Nativity') || uploadedDoc.documentType.includes('Citizen')
+        ? 'Statutory / Local'
+        : uploadedDoc.documentType.includes('Women') || uploadedDoc.documentType.includes('Female') || uploadedDoc.documentType.includes('Diversity')
+        ? 'Statutory / Diversity'
         : uploadedDoc.documentType.includes('OEM')
         ? 'Technical / OEM'
         : uploadedDoc.documentType.includes('India') || uploadedDoc.documentType.includes('Local')
@@ -171,6 +240,91 @@ export default function BidderCreateBidPage() {
     }
   };
 
+  const handleOpenVault = async () => {
+    setIsVaultModalOpen(true);
+    setIsLoadingVault(true);
+    try {
+      const res = await fetch('/api/documents?bidder_id=VEN-TECHCORP-01');
+      const data = await res.json();
+      if (data.documents) {
+        setVaultDocs(data.documents);
+      }
+    } catch (err) {
+      showToast('Failed to fetch vault documents.', 'error');
+    } finally {
+      setIsLoadingVault(false);
+    }
+  };
+
+  const handleSelectFromVault = (doc: any) => {
+    if (attachedDocs.some(d => d.id === doc.id)) {
+      showToast('Document already attached.', 'warning');
+      return;
+    }
+    const fileExt = doc.originalFilename?.split('.').pop()?.toLowerCase() || 'pdf';
+    setAttachedDocs(prev => [
+      {
+        id: doc.id,
+        name: doc.originalFilename || doc.id,
+        category: doc.documentType || 'Other',
+        docNumber: doc.id,
+        uploadedAt: doc.uploadedAt,
+        status: 'VERIFIED',
+        source: 'Vault Import',
+        confidence: doc.confidence || 0.99,
+        fileSize: doc.fileSizeFormatted || '1.0 MB',
+        fileType: fileExt === 'png' || fileExt === 'jpg' || fileExt === 'jpeg' ? 'image' : 'pdf',
+        hashSha256: doc.hashSha256 || 'vault-hash',
+        isMandatory: false,
+      },
+      ...prev,
+    ]);
+    setIsVaultModalOpen(false);
+    showToast(`Attached ${doc.originalFilename} from Vault.`, 'success');
+  };
+
+  // Dynamically compute compliance score from fulfilled requirements weights
+  const computeComplianceScore = () => {
+    if (!tenderRequirements || tenderRequirements.length === 0) return 0;
+    let fulfilledWeight = 0;
+    const totalWeight = tenderRequirements.reduce((sum, r) => sum + r.weight, 0);
+    
+    for (const req of tenderRequirements) {
+      const matched = attachedDocs.some(d =>
+        d.category.includes(req.category.split('/')[1]?.trim() || req.category) ||
+        d.name.toLowerCase().includes(req.name.toLowerCase().split(' ')[0]) ||
+        (req.name.includes('MSME') && d.category.includes('MSME'))
+      );
+      if (matched) fulfilledWeight += req.weight;
+    }
+
+    // Scale to 100 based on total weight
+    let score = totalWeight > 0 ? Math.round((fulfilledWeight / totalWeight) * 100) : 0;
+    
+    // Penalty if local content < 50% and MII requirement exists
+    const hasMiiReq = tenderRequirements.some(r => r.category.includes('MII'));
+    if (hasMiiReq && localContent < 50) {
+      score = Math.max(0, score - 8); // 8-point deduction for Class-II
+    }
+
+    // Anti-Monopoly Cap Penalty: Deduct 15 points if active bids exceed cap
+    if (existingBidsCount >= maxBidsPerBidder) {
+      score = Math.max(0, score - 15);
+    }
+    return score;
+  };
+
+  const complianceScore = computeComplianceScore();
+  const fulfilledCount = tenderRequirements?.filter(req => {
+    return attachedDocs.some(d =>
+      d.category.includes(req.category.split('/')[1]?.trim() || req.category) ||
+      d.name.toLowerCase().includes(req.name.toLowerCase().split(' ')[0]) ||
+      (req.name.includes('MSME') && d.category.includes('MSME'))
+    );
+  }).length || 0;
+  const gaps = (tenderRequirements?.length || 0) - fulfilledCount;
+  const riskLevel = complianceScore >= 90 ? 'LOW' : complianceScore >= 70 ? 'MEDIUM' : 'CRITICAL';
+
   const handleRunPreCheck = () => {
     setIsPreChecking(true);
     showToast('Running AI Pre-Submission Compliance Check...', 'info');
@@ -178,10 +332,12 @@ export default function BidderCreateBidPage() {
     setTimeout(() => {
       setIsPreChecking(false);
       setPreCheckDone(true);
-      if (localContent < 50) {
-        showToast('AI Pre-Check: 1 Shortfall Flag detected on Local Content (42% vs 50%).', 'warning');
+      if (gaps > 0) {
+        showToast(`AI Pre-Check: ${gaps} Gap(s) detected. Score: ${complianceScore}/100.`, 'warning');
+      } else if (localContent < 50) {
+        showToast(`AI Pre-Check: Local Content below 50% Class-I threshold. Score: ${complianceScore}/100.`, 'warning');
       } else {
-        showToast('AI Pre-Check: All 8 deterministic compliance rules passed.', 'success');
+        showToast(`AI Pre-Check: All ${tenderRequirements.length} compliance rules passed. Score: ${complianceScore}/100.`, 'success');
       }
     }, 1200);
   };
@@ -212,8 +368,8 @@ export default function BidderCreateBidPage() {
             totalQuotedINR: totalQuoted,
             totalQuotedFormatted: `₹${(totalQuoted / 10000000).toFixed(2)} Cr`,
           },
-          complianceScore: localContent >= 50 ? 96 : 82,
-          riskLevel: localContent >= 50 ? 'LOW' : 'MEDIUM',
+          complianceScore: complianceScore,
+          riskLevel: riskLevel,
           localContentPercent: localContent,
           documents: attachedDocs.map(d => ({
             ...d,
@@ -321,6 +477,29 @@ export default function BidderCreateBidPage() {
                 <p className="text-xs text-neutral-muted mt-1">Chennai Petroleum Corporation Ltd (CPCL) • CPPP Public Registry</p>
               </div>
             </label>
+          {/* Diversity / Reservation Query */}
+          <div className="p-4 bg-surface rounded-xl border border-outline-variant/80 space-y-3">
+            <h4 className="font-bold text-xs text-primary uppercase tracking-wider flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-[16px] text-primary">diversity_1</span>
+              Statutory Procurement Quotas
+            </h4>
+            <div className="flex items-start gap-3">
+              <input 
+                type="checkbox"
+                id="women_led_chk"
+                checked={isWomenLed}
+                onChange={(e) => setIsWomenLed(e.target.checked)}
+                className="accent-primary w-4 h-4 cursor-pointer mt-1"
+              />
+              <div>
+                <label htmlFor="women_led_chk" className="font-bold text-xs text-primary cursor-pointer block">
+                  Our enterprise is Women-Led (≥ 51% female ownership or female CEO/MD)
+                </label>
+                <p className="text-[10px] text-neutral-muted mt-0.5">
+                  This tender allocates a <strong>{womenReservationPercent}% Purchase Preference quota</strong> for women-owned MSEs. Checking this will prompt you to attach a valid leadership/ownership proof in Step 3.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="flex justify-end pt-4">
@@ -387,7 +566,15 @@ export default function BidderCreateBidPage() {
           <div className="flex justify-between items-center">
             <h3 className="font-bold text-base text-primary">Attach Vault Artifacts & Local Content Declaration</h3>
             {/* Real File Upload Input Trigger */}
-            <div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleOpenVault}
+                className="bg-surface text-primary border border-primary/30 px-3.5 py-1.5 rounded-xl text-xs font-semibold hover:bg-primary/5 transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-[16px]">folder_open</span>
+                Select from Vault
+              </button>
               <input
                 type="file"
                 ref={fileInputRef}
@@ -442,35 +629,85 @@ export default function BidderCreateBidPage() {
             </p>
           </div>
 
-          <div className="space-y-2 border-t border-outline-variant/60 pt-3">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-primary block">Attached Verified Documents ({attachedDocs.length}):</span>
-              <span className="text-[11px] text-success font-semibold flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px] icon-fill">verified</span>
-                All 4 Mandatory Documents Attached
+          <div className="space-y-3 border-t border-outline-variant/60 pt-4 mt-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-bold text-primary block">Mandatory Tender Requirements</span>
+              <span className="text-xs font-bold text-primary px-2 py-1 bg-surface-alt rounded border border-outline-variant">
+                {attachedDocs.length} / {tenderRequirements?.length || 0} Fulfilled
               </span>
             </div>
 
-            {attachedDocs.map(doc => (
-              <div key={doc.id} className="p-3 bg-surface rounded-xl border border-outline-variant flex items-center justify-between text-xs">
-                <span className="font-semibold text-primary flex items-center gap-2">
-                  <span className="material-symbols-outlined text-danger text-[18px]">
-                    {doc.fileType === 'image' ? 'image' : 'picture_as_pdf'}
-                  </span>
-                  {doc.name}
-                  <span className="text-[10px] text-neutral-muted font-mono">({doc.fileSize})</span>
-                </span>
-                <span className="text-success font-bold flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px] icon-fill">verified</span> {doc.source}
-                </span>
-              </div>
-            ))}
+            {tenderRequirements?.map(req => {
+              // Robust keyword matching to link attached doc to requirement
+              const attachedDoc = attachedDocs.find(d => {
+                const docName = d.name.toLowerCase();
+                const reqName = req.name.toLowerCase();
+                
+                if (reqName.includes('gst')) return docName.includes('gst');
+                if (reqName.includes('pan')) return docName.includes('pan');
+                if (reqName.includes('udyam') || reqName.includes('msme')) return docName.includes('udyam') || docName.includes('msme') || docName.includes('msme_registration');
+                if (reqName.includes('mse') || reqName.includes('micro')) return docName.includes('mse') || docName.includes('micro') || docName.includes('small_enterprise');
+                if (reqName.includes('sc/st') || reqName.includes('caste') || reqName.includes('community')) return docName.includes('sc/st') || docName.includes('caste') || docName.includes('sc_st') || docName.includes('community');
+                if (reqName.includes('make in india') || reqName.includes('local content')) return docName.includes('make_in_india') || docName.includes('local_content') || docName.includes('mii');
+                if (reqName.includes('oem')) return docName.includes('oem') || docName.includes('maf');
+                if (reqName.includes('epfo')) return docName.includes('epfo') || docName.includes('provident');
+                if (reqName.includes('esic')) return docName.includes('esic') || docName.includes('insurance');
+                if (reqName.includes('turnover')) return docName.includes('turnover');
+                if (reqName.includes('experience')) return docName.includes('experience');
+                if (reqName.includes('iso')) return docName.includes('iso');
+                if (reqName.includes('debarment')) return docName.includes('debarment') || docName.includes('blacklisted');
+                if (reqName.includes('nativity')) return docName.includes('nativity') || docName.includes('origin');
+                if (reqName.includes('citizen') || reqName.includes('membership')) return docName.includes('citizen') || docName.includes('membership') || docName.includes('card') || docName.includes('passport');
+                if (reqName.includes('women') || reqName.includes('female') || reqName.includes('leadership') || reqName.includes('diversity')) return docName.includes('women') || docName.includes('female') || docName.includes('leadership') || docName.includes('diversity');
+                
+                return d.category.includes(req.category.split('/')[1]?.trim() || req.category);
+              });
+              
+              return (
+                <div key={req.id} className={`p-4 rounded-xl border flex flex-col gap-3 transition-colors ${attachedDoc ? 'bg-success/5 border-success/30' : 'bg-surface border-outline-variant'}`}>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <span className="font-bold text-sm text-primary flex items-center gap-1.5">
+                        {attachedDoc ? <span className="material-symbols-outlined text-[16px] text-success">check_circle</span> : <span className="material-symbols-outlined text-[16px] text-danger">error</span>}
+                        {req.name}
+                      </span>
+                      <span className="text-xs text-neutral-muted mt-0.5 block">Weight: {req.weight}% • Category: {req.category}</span>
+                    </div>
+                    {attachedDoc ? (
+                      <MockBadge label="FULFILLED" variant="green" size="sm" />
+                    ) : (
+                      <MockBadge label="MISSING" variant="amber" size="sm" />
+                    )}
+                  </div>
+                  
+                  {attachedDoc ? (
+                    <div className="p-2.5 bg-white rounded-lg border border-success/20 flex justify-between items-center text-xs shadow-sm">
+                      <span className="font-semibold text-primary truncate max-w-[60%] flex items-center gap-2">
+                        <span className="material-symbols-outlined text-danger text-[16px]">
+                          {attachedDoc.fileType === 'image' ? 'image' : 'picture_as_pdf'}
+                        </span>
+                        {attachedDoc.name}
+                      </span>
+                      <span className="text-success font-bold text-[10px] uppercase flex items-center gap-1">
+                        <span className="material-symbols-outlined text-[12px] icon-fill">verified</span>
+                        {attachedDoc.source}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={handleOpenVault} className="px-3 py-1.5 text-xs font-semibold border border-outline-variant rounded-lg bg-white hover:bg-surface-alt transition-colors shadow-sm">Select from Vault</button>
+                      <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary-container transition-colors shadow-sm">Upload</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="flex justify-between pt-4">
             <button
               onClick={() => setStep(2)}
-              className="border border-outline-variant px-4 py-2 rounded-xl text-sm font-semibold"
+              className="border border-outline-variant px-4 py-2 rounded-xl text-sm font-semibold hover:bg-surface-alt transition-colors"
             >
               ← Back
             </button>
@@ -479,7 +716,12 @@ export default function BidderCreateBidPage() {
                 setStep(4);
                 handleRunPreCheck();
               }}
-              className="bg-primary text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-primary-container"
+              disabled={attachedDocs.length < (tenderRequirements?.length || 0)}
+              className={`px-5 py-2 rounded-xl text-sm font-semibold transition-colors ${
+                attachedDocs.length >= (tenderRequirements?.length || 0)
+                  ? 'bg-primary text-white hover:bg-primary-container shadow-sm'
+                  : 'bg-surface-variant text-neutral-muted cursor-not-allowed border border-outline-variant/60'
+              }`}
             >
               Run AI Pre-Check & Review →
             </button>
@@ -502,23 +744,64 @@ export default function BidderCreateBidPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className={`p-4 rounded-xl border flex items-center justify-between ${localContent >= 50 ? 'bg-success/10 border-success/30 text-success' : 'bg-warning/10 border-warning/30 text-warning'}`}>
+              <div className={`p-4 rounded-xl border flex items-center justify-between ${complianceScore >= 90 ? 'bg-success/10 border-success/30 text-success' : complianceScore >= 70 ? 'bg-warning/10 border-warning/30 text-warning' : 'bg-danger/10 border-danger/30 text-danger'}`}>
                 <div>
-                  <span className="font-black text-xl font-display">{localContent >= 50 ? '96/100' : '82/100'}</span>
+                  <span className="font-black text-xl font-display">{complianceScore}/100</span>
                   <p className="text-xs font-semibold mt-0.5">
-                    {localContent >= 50 ? 'All statutory and local content rules passed.' : '1 Gap Flagged: Local Content is below 50% Class-I threshold.'}
+                    {gaps === 0 && localContent >= 50
+                      ? `All ${tenderRequirements.length} statutory and local content rules passed.`
+                      : gaps > 0
+                      ? `${gaps} Gap(s) Flagged: ${gaps} mandatory document(s) missing.${localContent < 50 ? ' Local Content below 50% Class-I threshold.' : ''}`
+                      : `Local Content is ${localContent}% (below 50% Class-I threshold).`
+                    }
                   </p>
                 </div>
                 <span className="material-symbols-outlined text-[28px] icon-fill">
-                  {localContent >= 50 ? 'check_circle' : 'warning'}
+                  {complianceScore >= 90 ? 'check_circle' : complianceScore >= 70 ? 'warning' : 'error'}
                 </span>
               </div>
 
-              <div className="p-4 bg-surface rounded-xl border border-outline-variant text-xs text-on-surface-variant space-y-2">
-                <span className="font-bold text-primary block">AI Pre-Submission Summary:</span>
-                <p>• GSTN, PAN, and Udyam MSME (data.gov.in) validations: <strong>100% Passed</strong>.</p>
-                <p>• Make-in-India declaration: <strong>{localContent}%</strong> ({localContent >= 50 ? 'Class-I Local Supplier' : 'Class-II Local Supplier'}).</p>
-                <p>• Real uploaded attachments: <strong>{attachedDocs.length} Documents</strong> cryptographically SHA-256 sealed.</p>
+              {/* Detailed per-requirement breakdown */}
+              <div className="p-4 bg-surface rounded-xl border border-outline-variant text-xs space-y-2">
+                <span className="font-bold text-primary block">AI Pre-Submission Breakdown ({fulfilledCount}/{tenderRequirements.length} requirements met):</span>
+                {tenderRequirements?.map(req => {
+                  const matched = attachedDocs.some(d =>
+                    d.category.includes(req.category.split('/')[1]?.trim() || req.category) ||
+                    d.name.toLowerCase().includes(req.name.toLowerCase().split(' ')[0]) ||
+                    (req.name.includes('MSME') && d.category.includes('MSME'))
+                  );
+                  return (
+                    <div key={req.id} className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className={`material-symbols-outlined text-[14px] ${matched ? 'text-success' : 'text-danger'}`}>
+                          {matched ? 'check_circle' : 'cancel'}
+                        </span>
+                        {req.name} <span className="text-neutral-muted">({req.weight}%)</span>
+                      </span>
+                      <span className={`font-bold ${matched ? 'text-success' : 'text-danger'}`}>
+                        {matched ? 'PASSED' : 'MISSING'}
+                      </span>
+                    </div>
+                  );
+                })}
+                {localContent < 50 && (
+                  <div className="flex items-center justify-between border-t border-outline-variant/50 pt-2 mt-2">
+                    <span className="flex items-center gap-1.5 text-warning font-semibold">
+                      <span className="material-symbols-outlined text-[14px]">warning</span>
+                      Local Content: <strong>{localContent}%</strong> (Class-II, below 50% threshold)
+                    </span>
+                    <span className="font-bold text-warning">-8 pts</span>
+                  </div>
+                )}
+                {existingBidsCount >= maxBidsPerBidder && (
+                  <div className="flex items-center justify-between border-t border-outline-variant/50 pt-2 mt-2">
+                    <span className="flex items-center gap-1.5 text-danger font-semibold">
+                      <span className="material-symbols-outlined text-[14px]">warning</span>
+                      Anti-Monopoly Cap Exceeded: You already have {existingBidsCount} active bid(s) (Cap: {maxBidsPerBidder}).
+                    </span>
+                    <span className="font-bold text-danger">-15 pts</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between pt-4">
@@ -541,6 +824,49 @@ export default function BidderCreateBidPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {isVaultModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-surface rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-outline-variant flex justify-between items-center">
+              <h3 className="font-bold text-lg text-primary">Select Document from Vault</h3>
+              <button onClick={() => setIsVaultModalOpen(false)} className="text-neutral-muted hover:text-primary">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-2">
+              {isLoadingVault ? (
+                <div className="text-center p-8 text-neutral-muted">Loading vault...</div>
+              ) : vaultDocs.length === 0 ? (
+                <div className="text-center p-8 text-neutral-muted">No documents found in vault. Please upload some first.</div>
+              ) : (
+                vaultDocs.map(doc => {
+                  const isAttached = attachedDocs.some(d => d.id === doc.id);
+                  return (
+                    <div 
+                      key={doc.id} 
+                      onClick={() => !isAttached && handleSelectFromVault(doc)} 
+                      className={`flex justify-between items-center p-3 border rounded-xl transition-all ${
+                        isAttached 
+                          ? 'border-outline-variant/30 bg-surface-variant opacity-60 cursor-not-allowed' 
+                          : 'border-outline-variant cursor-pointer hover:bg-primary/5 hover:border-primary/50'
+                      }`}
+                    >
+                      <div>
+                        <p className="font-semibold text-sm text-primary">{doc.originalFilename}</p>
+                        <p className="text-xs text-neutral-muted">{doc.documentType} • {doc.fileSizeFormatted}</p>
+                      </div>
+                      <span className={`material-symbols-outlined ${isAttached ? 'text-success icon-fill' : 'text-primary'}`}>
+                        {isAttached ? 'check_circle' : 'add_circle'}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -168,7 +168,7 @@ export function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModalProps) {
           title: d.originalFilename,
           subtitle: `${d.documentType} • ${d.fileSizeFormatted} • ${d.status}`,
           badge: d.status,
-          route: isClient ? '/client/bids/BID-1024/evidence' : '/admin/dashboard',
+          route: isClient ? '/client/bids/BID-1024/evidence' : '/admin/document-types',
           icon: 'picture_as_pdf',
         });
       }

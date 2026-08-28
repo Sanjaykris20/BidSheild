@@ -38,10 +38,10 @@ function Start-Service($name, $scriptBlock, $workingDir) {
     Write-Colored "  Started: $name" $Green
 }
 
-Write-Colored "`n╔═══════════════════════════════════════════════════════════════════════╗" $Cyan
-Write-Colored "║  BidCompliance AI Platform - SIH 26100                               ║" $Cyan
-Write-Colored "║  Unified Startup Script                                              ║" $Cyan
-Write-Colored "╚═══════════════════════════════════════════════════════════════════════╝`n" $Cyan
+Write-Colored "`n=======================================================================" $Cyan
+Write-Colored "  BidCompliance AI Platform - SIH 26100                               " $Cyan
+Write-Colored "  Unified Startup Script                                              " $Cyan
+Write-Colored "=======================================================================`n" $Cyan
 
 # Check prerequisites
 Write-Colored "Checking prerequisites..." $Yellow
@@ -95,14 +95,14 @@ if (-not $SkipInstall) {
         Write-Colored "  AI Engine dependencies installed" $Green
     }
 
-    # Node Backend Dependencies
+    # Next.js Frontend Dependencies
     if (-not $OnlyBackend -and -not $OnlyAI) {
-        Write-Colored "  Installing Node.js dependencies..." $Cyan
-        Set-Location $ProjectRoot
+        Write-Colored "  Installing Next.js dependencies..." $Cyan
+        Set-Location "$ProjectRoot\frontend"
         if (-not (Test-Path "node_modules")) {
             npm install
         }
-        Write-Colored "  Node.js dependencies installed" $Green
+        Write-Colored "  Next.js dependencies installed" $Green
     }
 }
 
@@ -114,7 +114,7 @@ $services = @()
 
 if (-not $OnlyNode -and -not $OnlyAI) {
     # Python Backend (Port 8000)
-    $services += @{Name="Python Backend (FastAPI)"; Port=8000; URL="http://localhost:8000"; Health="http://localhost:8000/"}
+    $services += @{Name="Python Backend"; Port=8000; URL="http://localhost:8000"; Health="http://localhost:8000/"}
     Start-Service "Python Backend" {
         Set-Location 'C:\Users\sanja\Desktop\Projects\BidSheild\backend'
         Write-Host "Starting Python Backend on port 8000..." -ForegroundColor Cyan
@@ -123,18 +123,18 @@ if (-not $OnlyNode -and -not $OnlyAI) {
 }
 
 if (-not $OnlyBackend -and -not $OnlyAI) {
-    # Node Backend (Port 3000) - serves the HTML frontend and API gateway
-    $services += @{Name="Node Backend (Express)"; Port=3000; URL="http://localhost:3000"; Health="http://localhost:3000/api/health"}
-    Start-Service "Node Backend" {
-        Set-Location 'C:\Users\sanja\Desktop\Projects\BidSheild'
-        Write-Host "Starting Node Backend on port 3000..." -ForegroundColor Cyan
+    # Next.js Frontend (Port 3000)
+    $services += @{Name="Next.js Frontend"; Port=3000; URL="http://localhost:3000"; Health="http://localhost:3000"}
+    Start-Service "Next.js Frontend" {
+        Set-Location 'C:\Users\sanja\Desktop\Projects\BidSheild\frontend'
+        Write-Host "Starting Next.js Frontend on port 3000..." -ForegroundColor Cyan
         npm run dev
-    } "$ProjectRoot"
+    } "$ProjectRoot\frontend"
 }
 
 if (-not $OnlyBackend -and -not $OnlyNode) {
     # AI Engine (Port 8001)
-    $services += @{Name="AI Engine (FastAPI)"; Port=8001; URL="http://localhost:8001"; Health="http://localhost:8001/"}
+    $services += @{Name="AI Engine"; Port=8001; URL="http://localhost:8001"; Health="http://localhost:8001/"}
     Start-Service "AI Engine" {
         Set-Location 'C:\Users\sanja\Desktop\Projects\BidSheild\ai-engine'
         Write-Host "Starting AI Engine on port 8001..." -ForegroundColor Cyan
@@ -143,19 +143,19 @@ if (-not $OnlyBackend -and -not $OnlyNode) {
 }
 
 # Summary
-Write-Colored "`n╔═══════════════════════════════════════════════════════════════════════╗" $Cyan
-Write-Colored "║  Services Started                                                    ║" $Cyan
-Write-Colored "╚═══════════════════════════════════════════════════════════════════════╝" $Cyan
+Write-Colored "`n=======================================================================" $Cyan
+Write-Colored "  Services Started                                                    " $Cyan
+Write-Colored "=======================================================================" $Cyan
 
 foreach ($svc in $services) {
     Write-Colored "  $($svc.Name)`t→ $($svc.URL)" $Green
 }
 
 Write-Colored "`nAccess Points:" $Yellow
-Write-Colored "  📊 Main Platform:          http://localhost:3000" $Cyan
-Write-Colored "  🐍 Python API Docs:          http://localhost:8000/docs" $Cyan
-Write-Colored "  🤖 AI Engine Docs:           http://localhost:8001/docs" $Cyan
-Write-Colored "  💚 Health Check:            http://localhost:3000/api/health" $Cyan
+Write-Colored "  [Web] Main Platform:          http://localhost:3000" $Cyan
+Write-Colored "  [API] Python API Docs:          http://localhost:8000/docs" $Cyan
+Write-Colored "  [AI] AI Engine Docs:           http://localhost:8001/docs" $Cyan
+Write-Colored "  [Health] Health Check:            http://localhost:3000/api/health" $Cyan
 
 Write-Colored "`nPress Ctrl+C in each window to stop services." $Gray
 

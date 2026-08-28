@@ -265,6 +265,13 @@ export interface AIRecommendation {
   generatedAt: string;
 }
 
+export interface TenderRequiredDocument {
+  id: string;
+  name: string;
+  category: string;
+  weight: number;
+}
+
 export interface Tender {
   id: string;
   tenderNumber: string;
@@ -288,6 +295,9 @@ export interface Tender {
   location: string;
   emdAmountFormatted: string;
   tags: string[];
+  requiredDocuments?: TenderRequiredDocument[];
+  maxBidsPerBidder?: number;
+  womenReservationPercent?: number;
 }
 
 export interface CommercialPriceBreakdown {

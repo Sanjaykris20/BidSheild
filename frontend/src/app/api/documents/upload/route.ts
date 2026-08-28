@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
         fileName: file.name,
         mimeType: file.type || 'application/octet-stream',
         buffer,
+        rawBlob: file,
         bidId,
         tenderId,
         bidderId,

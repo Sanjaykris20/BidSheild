@@ -1,13 +1,29 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function AdminBidsPage() {
-  const bids = [
-    { id: 'BID-2026-1024', tender: 'GEM/2026/B/1024', bidder: 'TechCorp Solutions Pvt Ltd', score: 82, risk: 'MEDIUM', status: 'UNDER_EVALUATION' },
-    { id: 'BID-2026-8820', tender: 'CPCL/2026/899120', bidder: 'Alpha Defense Systems Ltd', score: 94, risk: 'LOW', status: 'QUALIFIED' },
-    { id: 'BID-2026-8821', tender: 'CPCL/2026/899120', bidder: 'Bravo Heavy Engineering Corp', score: 52, risk: 'CRITICAL', status: 'DISQUALIFIED' },
-  ];
+  const router = useRouter();
+  const [bids, setBids] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBids = async () => {
+      try {
+        const res = await fetch('/api/bids');
+        const data = await res.json();
+        if (data.bids) {
+          setBids(data.bids);
+        }
+      } catch (err) {
+        console.error('Failed to fetch bids', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchBids();
+  }, []);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in pb-12">
@@ -31,30 +47,51 @@ export default function AdminBidsPage() {
               <th className="p-4">Bidder</th>
               <th className="p-4">Compliance Score</th>
               <th className="p-4">Status</th>
+              <th className="p-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant">
-            {bids.map(b => (
-              <tr key={b.id} className="hover:bg-surface-alt/40">
-                <td className="p-4 font-mono font-bold text-primary">{b.id}</td>
-                <td className="p-4 font-mono text-neutral-muted">{b.tender}</td>
-                <td className="p-4 font-semibold text-primary">{b.bidder}</td>
-                <td className="p-4 font-display font-black text-primary text-sm">{b.score}/100 ({b.risk})</td>
-                <td className="p-4">
-                  <span
-                    className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded border ${
-                      b.status === 'QUALIFIED'
-                        ? 'bg-success/10 text-success border-success/20'
-                        : b.status === 'DISQUALIFIED'
-                        ? 'bg-danger/10 text-danger border-danger/20'
-                        : 'bg-info/10 text-info border-info/20'
-                    }`}
-                  >
-                    {b.status}
-                  </span>
-                </td>
+            {loading ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-neutral-muted">Loading bids...</td>
               </tr>
-            ))}
+            ) : bids.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-neutral-muted">No bids submitted yet.</td>
+              </tr>
+            ) : (
+              bids.map(b => (
+                <tr key={b.id} className="hover:bg-surface-alt/40 transition-colors">
+                  <td className="p-4 font-mono font-bold text-primary">{b.id}</td>
+                  <td className="p-4 font-mono text-neutral-muted">{b.tenderNumber || b.tenderId}</td>
+                  <td className="p-4 font-semibold text-primary">{b.bidderName || b.bidderId}</td>
+                  <td className="p-4 font-display font-black text-primary text-sm">
+                    {b.complianceScore}/100 <span className="font-normal text-[10px] text-neutral-muted">({b.riskLevel})</span>
+                  </td>
+                  <td className="p-4">
+                    <span
+                      className={`px-2.5 py-1 text-[10px] font-bold uppercase rounded border ${
+                        b.status === 'QUALIFIED' || b.status === 'ACCEPTED'
+                          ? 'bg-success/10 text-success border-success/20'
+                          : b.status === 'DISQUALIFIED' || b.status === 'REJECTED'
+                          ? 'bg-danger/10 text-danger border-danger/20'
+                          : 'bg-info/10 text-info border-info/20'
+                      }`}
+                    >
+                      {b.status}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right">
+                    <button
+                      onClick={() => router.push(`/admin/bids/${b.id}`)}
+                      className="text-xs font-bold text-primary hover:text-primary/80 transition-colors border border-outline-variant bg-white px-3 py-1.5 rounded-lg shadow-sm"
+                    >
+                      Review
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
